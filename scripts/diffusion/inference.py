@@ -99,11 +99,15 @@ def main():
     dataloader_args = dict(
         dataset=dataset,
         batch_size=cfg.get("batch_size", 1),
-        num_workers=cfg.get("num_workers", 4),
+        # macOS spawns (not forks) DataLoader workers, so the local seed_worker
+        # closure can't be pickled. Single-device inference doesn't need workers.
+        num_workers=cfg.get("num_workers", 4) if device == "cuda" else 0,
         seed=cfg.get("seed", 1024),
         shuffle=False,
         drop_last=False,
-        pin_memory=True,
+        # pinned host memory is a CUDA concept and the pin-memory thread calls
+        # torch.cuda.current_device(); pointless and crash-prone on MPS/CPU.
+        pin_memory=(device == "cuda"),
         process_group=get_data_parallel_group(),
         prefetch_factor=cfg.get("prefetch_factor", None),
     )

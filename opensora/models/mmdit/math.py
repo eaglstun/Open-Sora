@@ -48,12 +48,35 @@ def flash_attn_func(q: Tensor, k: Tensor, v: Tensor) -> Tensor:
     return _sdpa_attn(q, k, v)
 
 
+def _rotate_half(x: Tensor) -> Tensor:
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def liger_rope_torch(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor) -> tuple[Tensor, Tensor]:
+    """Pure-torch equivalent of LigerRopeFunction.apply for the MPS/CPU lane.
+
+    liger's RoPE kernel is a drop-in for HF apply_rotary_pos_emb with
+    unsqueeze_dim=1: q/k are (B, H, L, D), cos/sin are (B, L, D) (already
+    half-duplicated by LigerEmbedND), broadcast over the head dim.
+    """
+    cos = cos.unsqueeze(1).to(q.dtype)
+    sin = sin.unsqueeze(1).to(q.dtype)
+    q_embed = (q * cos) + (_rotate_half(q) * sin)
+    k_embed = (k * cos) + (_rotate_half(k) * sin)
+    return q_embed, k_embed
+
+
 def attention(q: Tensor, k: Tensor, v: Tensor, pe) -> Tensor:
     if isinstance(pe, torch.Tensor):
         q, k = apply_rope(q, k, pe)
     else:
         cos, sin = pe
-        q, k = LigerRopeFunction.apply(q, k, cos, sin)
+        if LigerRopeFunction is not None:
+            q, k = LigerRopeFunction.apply(q, k, cos, sin)
+        else:
+            q, k = liger_rope_torch(q, k, cos, sin)
         # to compare with the original implementation
         # k = reverse_rearrange_tensor(k)
     q = rearrange(q, "B H L D -> B L H D")

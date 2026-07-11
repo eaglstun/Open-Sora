@@ -1,3 +1,4 @@
+import torch
 from colossalai.shardformer import ShardConfig, ShardFormer
 from torch import Tensor, nn
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5Tokenizer
@@ -23,8 +24,12 @@ class HFEmbedder(nn.Module):
                 from_pretrained, max_length=max_length, legacy=True
             )
             self.hf_module: T5EncoderModel = T5EncoderModel.from_pretrained(from_pretrained, **hf_kwargs)
-            if shardformer:
+            if shardformer and torch.cuda.is_available():
                 self.hf_module = shardformer_t5(self.hf_module)
+            # On the single-device (MPS/CPU) lane, skip shardformer: it does no
+            # tensor-parallelism here (enable_tensor_parallelism=False) and its
+            # T5 forward monkeypatch is incompatible with transformers >=5. Vanilla
+            # HF T5 is numerically equivalent.
 
         self.hf_module = self.hf_module.eval().requires_grad_(False)
 

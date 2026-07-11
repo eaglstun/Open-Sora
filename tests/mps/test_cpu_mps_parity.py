@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 B, L_IMG, L_TXT = 2, 32, 8
 
 
-def _tiny_config() -> MMDiTConfig:
+def _tiny_config(use_liger_rope: bool = False) -> MMDiTConfig:
     # hidden=64, heads=4 -> pe_dim=16; axes_dim even and summing to 16.
     return MMDiTConfig(
         from_pretrained=None, cache_dir=None,
@@ -36,7 +36,7 @@ def _tiny_config() -> MMDiTConfig:
         depth=2, depth_single_blocks=2,
         axes_dim=[4, 4, 8], theta=10000, qkv_bias=True,
         guidance_embed=False, cond_embed=False, fused_qkv=True,
-        grad_ckpt_settings=None, use_liger_rope=False, patch_size=2,
+        grad_ckpt_settings=None, use_liger_rope=use_liger_rope, patch_size=2,
     )
 
 
@@ -54,9 +54,20 @@ def _make_inputs(cfg: MMDiTConfig, device: str) -> dict:
                 timesteps=to(timesteps), y_vec=to(y_vec))
 
 
-def test_mmdit_forward_cpu_mps_parity_fp32():
+@pytest.mark.parametrize(
+    "use_liger_rope",
+    [
+        # apply_rope (interleaved) path
+        False,
+        # liger path: pe is a (cos, sin) tuple -> liger_rope_torch fallback on
+        # MPS. This is the path the real 256px checkpoint uses (use_liger_rope=True).
+        True,
+    ],
+    ids=["apply_rope", "liger_rope"],
+)
+def test_mmdit_forward_cpu_mps_parity_fp32(use_liger_rope):
     torch.manual_seed(0)
-    cfg = _tiny_config()
+    cfg = _tiny_config(use_liger_rope=use_liger_rope)
     model = MMDiTModel(cfg).eval().float()
 
     with torch.no_grad():

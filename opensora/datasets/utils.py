@@ -9,15 +9,14 @@ import pandas as pd
 import requests
 import torch
 import torch.distributed as dist
-import torchvision
 import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.datasets.folder import IMG_EXTENSIONS, pil_loader
-from torchvision.io import write_video
 from torchvision.utils import save_image
 
 from . import video_transforms
-from .read_video import read_video
+from ._video_io import write_video
+from .read_video import read_video, read_video_av
 
 try:
     import dask.dataframe as dd
@@ -180,7 +179,7 @@ def read_image_from_path(path, transform=None, transform_name="center", num_fram
 
 
 def read_video_from_path(path, transform=None, transform_name="center", image_size=(256, 256)):
-    vframes, aframes, info = torchvision.io.read_video(filename=path, pts_unit="sec", output_format="TCHW")
+    vframes, aframes, info = read_video_av(filename=path, pts_unit="sec", output_format="TCHW")
     if transform is None:
         transform = get_transforms_video(image_size=image_size, name=transform_name)
     video = transform(vframes)  # T C H W

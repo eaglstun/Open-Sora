@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import pandas as pd
 from pandarallel import pandarallel
-from torchvision.io.video import read_video
+from opensora.datasets.read_video import read_video_av as read_video
 from tqdm import tqdm
 
 

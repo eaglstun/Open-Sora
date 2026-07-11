@@ -22,7 +22,12 @@ from dataclasses import dataclass
 
 import torch
 from einops import rearrange
-from liger_kernel.ops.rms_norm import LigerRMSNormFunction
+
+try:
+    from liger_kernel.ops.rms_norm import LigerRMSNormFunction
+except ImportError:
+    # CUDA-only kernel; FusedRMSNorm falls back to the pure-torch RMSNorm below.
+    LigerRMSNormFunction = None
 from torch import Tensor, nn
 
 from .math import attention, liger_rope, rope
@@ -113,6 +118,9 @@ class RMSNorm(torch.nn.Module):
 
 class FusedRMSNorm(RMSNorm):
     def forward(self, x: Tensor):
+        if LigerRMSNormFunction is None:
+            # No liger kernel (e.g. Apple Silicon): use the pure-torch RMSNorm.
+            return super().forward(x)
         return LigerRMSNormFunction.apply(
             x,
             self.scale,

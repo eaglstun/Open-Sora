@@ -1,22 +1,51 @@
 import torch
+import torch.nn.functional as F
 from einops import rearrange
-from flash_attn import flash_attn_func as flash_attn_func_v2
-from liger_kernel.ops.rope import LigerRopeFunction
 from torch import Tensor
 from typing import Tuple
+
+# flash-attn and liger are CUDA kernels with no Apple Silicon build. Import them
+# when present (unchanged CUDA behaviour); otherwise fall back to torch SDPA /
+# the pure-torch rope path below. liger rope is only reached when
+# `use_liger_rope=True` (default False), so on the fallback path it stays None.
+try:
+    from flash_attn import flash_attn_func as flash_attn_func_v2
+
+    SUPPORT_FA2 = True
+except ImportError:
+    SUPPORT_FA2 = False
+
+try:
+    from liger_kernel.ops.rope import LigerRopeFunction
+except ImportError:
+    LigerRopeFunction = None
 
 try:
     from flash_attn_interface import flash_attn_func as flash_attn_func_v3
 
     SUPPORT_FA3 = True
-except:
+except ImportError:
     SUPPORT_FA3 = False
+
+
+def _sdpa_attn(q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+    """torch SDPA fallback for flash_attn_func.
+
+    flash_attn_func takes/returns (B, L, H, D); SDPA wants (B, H, L, D).
+    """
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
+    o = F.scaled_dot_product_attention(q, k, v)
+    return o.transpose(1, 2)
 
 
 def flash_attn_func(q: Tensor, k: Tensor, v: Tensor) -> Tensor:
     if SUPPORT_FA3:
         return flash_attn_func_v3(q, k, v)[0]
-    return flash_attn_func_v2(q, k, v)
+    if SUPPORT_FA2:
+        return flash_attn_func_v2(q, k, v)
+    return _sdpa_attn(q, k, v)
 
 
 def attention(q: Tensor, k: Tensor, v: Tensor, pe) -> Tensor:
@@ -49,7 +78,10 @@ def liger_rope(pos: Tensor, dim: int, theta: int) -> Tuple:
 
 def rope(pos: Tensor, dim: int, theta: int) -> Tuple:
     assert dim % 2 == 0
-    scale = torch.arange(0, dim, 2, dtype=torch.float64, device=pos.device) / dim
+    # float64 is unsupported on MPS; float32 is ample for rope frequencies at
+    # inference. The original used float64 on CUDA — see parity test tolerances.
+    rope_dtype = torch.float32 if pos.device.type == "mps" else torch.float64
+    scale = torch.arange(0, dim, 2, dtype=rope_dtype, device=pos.device) / dim
     omega = 1.0 / (theta**scale)
     out = torch.einsum("...n,d->...nd", pos, omega)
     out = torch.stack([torch.cos(out), -torch.sin(out), torch.sin(out), torch.cos(out)], dim=-1)

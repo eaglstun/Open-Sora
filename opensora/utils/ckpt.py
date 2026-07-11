@@ -16,7 +16,14 @@ from colossalai.utils.safetensors import save as async_save
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from tensornvme.async_file_io import AsyncFileWriter
+
+try:
+    from tensornvme.async_file_io import AsyncFileWriter
+except ImportError:
+    # tensornvme needs cmake to build and has no arm64 wheels; it is only used
+    # for async checkpoint *saving*, which inference never does. Stub it so the
+    # module imports on Apple Silicon / CPU-only machines.
+    AsyncFileWriter = None
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 

@@ -38,6 +38,12 @@ from opensora.utils.sampling import (
 )
 
 
+def _safe_barrier():
+    """dist.barrier() that no-ops on the single-device lane (no process group)."""
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
+
+
 @torch.inference_mode()
 def main():
     # ======================================================
@@ -50,7 +56,9 @@ def main():
     cfg = parse_alias(cfg)
 
     # == device and dtype ==
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    from opensora.utils.device import get_device
+
+    device = get_device()  # OPENSORA_DEVICE override -> MPS -> CUDA -> CPU
     dtype = to_torch_dtype(cfg.get("dtype", "bf16"))
     seed = cfg.get("seed", 1024)
     if seed is not None:
@@ -76,7 +84,7 @@ def main():
     # == build dataset ==
     if cfg.get("prompt"):
         cfg.dataset.data_path = create_tmp_csv(save_dir, cfg.prompt, cfg.get("ref", None), create=is_main_process())
-    dist.barrier()
+    _safe_barrier()
     dataset = build_module(cfg.dataset, DATASETS)
 
     # range selection
@@ -196,7 +204,7 @@ def main():
                         start_index,
                         saving=is_saving_process,
                     )
-                    dist.barrier()
+                    _safe_barrier()
 
                     if cfg.get("offload_model", False):
                         model_move_start = time.time()
@@ -235,7 +243,7 @@ def main():
 
                 if is_saving_process:
                     process_and_save(x, batch, cfg, sub_dir, sampling_option, epoch, start_index)
-                dist.barrier()
+                _safe_barrier()
 
     logger.info("Inference finished.")
     log_cuda_max_memory("inference")

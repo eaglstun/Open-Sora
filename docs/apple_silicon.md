@@ -123,6 +123,31 @@ All on `feature/apple-silicon-mps`; see `git diff main`.
   process group); `pin_memory`/`num_workers` disabled off-CUDA (pin*memory calls
   `torch.cuda.current_device()`; macOS \_spawns* workers and can't pickle the
   `seed_worker` closure).
+- `datasets/_video_io.py` (new) + `datasets/read_video.py` + `datasets/utils.py` +
+  `scripts/cnv/meta.py` — video read/write ported off `torchvision.io.video` onto
+  pyav (`av`). torchvision **removed** that API in 0.27 (and ships a broken fbcode
+  stub in 0.28), so the old imports hard-crash on any torch ≥2.12. This decouples the
+  data layer from the torchvision video API and is the prerequisite for running on
+  newer torch. (av ≥15 gotcha: `frame.pict_type = "NONE"` — the string form — is
+  rejected; omit it, NONE is the encoder default.)
+
+## Newer torch on MPS (torch 2.13 is faster)
+
+The port pins nothing above; with the video-I/O change above, the pipeline runs on
+**torch 2.13 / torchvision 0.28** as well as the 2.10 / 0.25 baseline. torch 2.13
+passes the parity test and is measurably faster on the MPS hot path — thermally
+controlled 13f/20-step, seed 42:
+
+| torch | cold render | warm render | cold→warm drift |
+| ----- | ----------- | ----------- | --------------- |
+| 2.10  | 137.6 s     | 176.5 s     | +28%            |
+| 2.13  | **129.0 s** | **146.5 s** | +13%            |
+
+≈ **−6% cold / −17% warm**, and 2.13 throttles noticeably less — it won despite
+running second (hotter). Output verified coherent and seed-matched to 2.10. To adopt,
+upgrade torch in a **dedicated env** (a `--system-site-packages` venv over the conda
+base works; keep base on 2.10 as the parity oracle). Note torchvision 0.28.0's public
+wheel has broken video I/O — irrelevant now that opensora no longer imports it.
 
 ## Correctness discipline
 

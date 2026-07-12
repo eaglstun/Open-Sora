@@ -196,3 +196,7 @@ exps
 ckpts
 flash-attention
 datasets
+
+# mps-bench: baselines + logs are machine-local measurements
+.claude/skills/mps-bench/baselines/
+.claude/skills/mps-bench/scripts/logs/

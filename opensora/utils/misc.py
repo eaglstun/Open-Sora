@@ -47,6 +47,8 @@ def log_cuda_memory(stage: str = None):
     Args:
         stage (str): The stage of the training process.
     """
+    if not torch.cuda.is_available():
+        return  # no CUDA memory stats on MPS/CPU
     text = "CUDA memory usage"
     if stage is not None:
         text += f" at {stage}"
@@ -60,6 +62,8 @@ def log_cuda_max_memory(stage: str = None):
     Args:
         stage (str): The stage of the training process.
     """
+    if not torch.cuda.is_available():
+        return  # no CUDA max-memory stats on MPS/CPU
     torch.cuda.synchronize()
     max_memory_allocated = torch.cuda.max_memory_allocated()
     max_memory_reserved = torch.cuda.max_memory_reserved()

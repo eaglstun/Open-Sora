@@ -32,6 +32,21 @@ sampling_option = dict(
 motion_score = "4"  # motion score for video generation
 fps_save = 24  # fps for video generation and saving
 
+# Move the T5/CLIP text encoders to CPU right after their embeddings are
+# computed (per api_fn call), freeing ~10 GB of device memory for the
+# denoise + decode phases; they move back before the next encode, so output
+# is bit-identical. Main win is on memory-constrained single-device runs
+# (e.g. Apple Silicon unified memory). Off by default: CUDA behavior unchanged.
+offload_text_encoders = False
+
+# torch.compile the MMDiT Double/SingleStreamBlocks (regional compilation,
+# default Inductor options). Off by default. Measured on Apple Silicon
+# (torch 2.13 Inductor-Metal, 2026-07-12): compiles cleanly but is a NET
+# SLOWDOWN vs eager MPS kernels (~-12% per forward) — leave off for speed
+# there; see docs/apple_silicon_roadmap.md P5. Requires TORCHDYNAMO_DISABLE
+# to be unset (a warning fires if it isn't).
+compile_mmdit = False
+
 # Define model components
 model = dict(
     type="flux",

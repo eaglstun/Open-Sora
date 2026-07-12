@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
@@ -14,6 +15,7 @@ from opensora.datasets.aspect import get_image_size
 from opensora.models.mmdit.model import MMDiTModel
 from opensora.models.text.conditioner import HFEmbedder
 from opensora.registry import MODELS, build_module
+from opensora.utils.device import empty_cache
 from opensora.utils.inference import (
     SamplingMethod,
     collect_references_batch,
@@ -508,6 +510,33 @@ def prepare_ids(
     }
 
 
+def compile_mmdit_blocks(model: nn.Module) -> None:
+    """Regionally ``torch.compile`` the MMDiT transformer blocks, in place.
+
+    Gated by the ``compile_mmdit`` config key (default off). Each Double/
+    SingleStreamBlock is compiled with default Inductor options — NOT
+    max-autotune (off-CUDA, Inductor skips GEMM autotuning anyway: "Not enough
+    SMs") — and ``dynamic=None`` (specialize on the first shape; a second
+    distinct shape triggers a dynamic recompile). Dynamo inlines nn.Modules,
+    so all 19 double blocks share one compiled artifact and all 38 single
+    blocks another: first-call compile overhead is a few seconds total.
+
+    Measured verdict on MPS / torch 2.13 (2026-07-12, details in
+    docs/apple_silicon_roadmap.md P5): compiles cleanly, but the generated
+    Metal kernels LOSE to eager MPS kernels (~-27% double block, ~-4% single
+    block, ~-12% net per forward) — keep this off on Apple Silicon for speed;
+    the flag exists so the experiment stays reproducible.
+    """
+    if os.environ.get("TORCHDYNAMO_DISABLE"):
+        warnings.warn(
+            "compile_mmdit=True but TORCHDYNAMO_DISABLE is set in the environment — "
+            "torch.compile is a silent no-op. Unset TORCHDYNAMO_DISABLE to actually compile."
+        )
+        return
+    for block in list(model.double_blocks) + list(model.single_blocks):
+        block.compile()
+
+
 def prepare_models(
     cfg: Config,
     device: torch.device,
@@ -532,6 +561,10 @@ def prepare_models(
     model = build_module(
         cfg.model, MODELS, device_map=model_device, torch_dtype=dtype
     ).eval()
+    if cfg.get("compile_mmdit", False):
+        # Lazy: tracing happens on the first forward, so this is safe to set up
+        # before any (optional) LoRA wrap below.
+        compile_mmdit_blocks(model)
     model_ae = build_module(
         cfg.ae, MODELS, device_map=model_device, torch_dtype=dtype
     ).eval()
@@ -565,6 +598,7 @@ def prepare_api(
     model_t5: nn.Module,
     model_clip: nn.Module,
     optional_models: dict[str, nn.Module],
+    offload_text_encoders: bool = False,
 ) -> callable:
     """
     Prepare the API function for inference.
@@ -574,10 +608,17 @@ def prepare_api(
         model_ae (nn.Module): The autoencoder model.
         model_t5 (nn.Module): The T5 model.
         model_clip (nn.Module): The CLIP model.
+        offload_text_encoders (bool): If True, move the T5/CLIP encoders to CPU
+            right after their embeddings are computed each call, freeing their
+            device memory (~10 GB at bf16) for the denoise + decode phases. The
+            encoders are moved back to their original device before the next
+            encode, so output is bit-identical to running with this off.
 
     Returns:
         callable: The API function for inference.
     """
+    # Home device of the text encoders, for re-materialization after an offload.
+    text_encoder_device = next(model_t5.parameters()).device
 
     @torch.inference_mode()
     def api_fn(
@@ -669,8 +710,23 @@ def prepare_api(
             guidance_img=opt.guidance_img,
         )
 
+        if offload_text_encoders:
+            # Re-materialize the encoders on their home device (no-op on the
+            # first call / if they were never offloaded).
+            model_t5.to(text_encoder_device)
+            model_clip.to(text_encoder_device)
+
         inp = prepare(model_t5, model_clip, z, prompt=text, patch_size=patch_size)
         inp.update(additional_inp)
+
+        if offload_text_encoders:
+            # The text embeddings for this call are computed and copied into
+            # `inp`; the encoders are dead weight for the rest of the call.
+            # Park them on CPU and return their device memory to the OS so
+            # denoise + decode (the memory-bound phases) get it.
+            model_t5.to("cpu")
+            model_clip.to("cpu")
+            empty_cache()
 
         if opt.method in [SamplingMethod.I2V]:
             # prepare references

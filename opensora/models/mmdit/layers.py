@@ -22,8 +22,15 @@ from dataclasses import dataclass
 
 import torch
 from einops import rearrange
-from liger_kernel.ops.rms_norm import LigerRMSNormFunction
+
+try:
+    from liger_kernel.ops.rms_norm import LigerRMSNormFunction
+except ImportError:
+    # CUDA-only kernel; FusedRMSNorm falls back to the pure-torch RMSNorm below.
+    LigerRMSNormFunction = None
 from torch import Tensor, nn
+
+from opensora.utils.device import is_cuda
 
 from .math import attention, liger_rope, rope
 
@@ -65,7 +72,6 @@ class LigerEmbedND(nn.Module):
         return (cos_emb, sin_emb)
 
 
-@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=True)
 def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 1000.0):
     """
     Create sinusoidal timestep embeddings.
@@ -86,6 +92,17 @@ def timestep_embedding(t: Tensor, dim, max_period=10000, time_factor: float = 10
     if torch.is_floating_point(t):
         embedding = embedding.to(t)
     return embedding
+
+
+if is_cuda():
+    # Upstream behavior: compile the embedding on CUDA. Off-CUDA (MPS/CPU lane)
+    # this decorator was the reason TORCHDYNAMO_DISABLE=1 had to be exported in
+    # every launch command — the max-autotune compile stalled the first denoise
+    # step on MPS — and compiling a two-line sinusoid buys nothing there, so the
+    # function stays eager. Measured on torch 2.13 (2026-07-12): Inductor-Metal
+    # compiles this fine standalone, but is a net perf loss on the MMDiT blocks
+    # (see docs/apple_silicon_roadmap.md P5), so eager is also the fast choice.
+    timestep_embedding = torch.compile(mode="max-autotune-no-cudagraphs", dynamic=True)(timestep_embedding)
 
 
 class MLPEmbedder(nn.Module):
@@ -113,6 +130,9 @@ class RMSNorm(torch.nn.Module):
 
 class FusedRMSNorm(RMSNorm):
     def forward(self, x: Tensor):
+        if LigerRMSNormFunction is None:
+            # No liger kernel (e.g. Apple Silicon): use the pure-torch RMSNorm.
+            return super().forward(x)
         return LigerRMSNormFunction.apply(
             x,
             self.scale,

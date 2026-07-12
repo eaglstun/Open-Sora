@@ -20,6 +20,7 @@ from opensora.utils.cai import (
     init_inference_environment,
 )
 from opensora.utils.config import parse_alias, parse_configs
+from opensora.utils.device import empty_cache
 from opensora.utils.inference import (
     add_fps_info_to_text,
     add_motion_score_to_text,
@@ -38,6 +39,12 @@ from opensora.utils.sampling import (
 )
 
 
+def _safe_barrier():
+    """dist.barrier() that no-ops on the single-device lane (no process group)."""
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
+
+
 @torch.inference_mode()
 def main():
     # ======================================================
@@ -50,7 +57,9 @@ def main():
     cfg = parse_alias(cfg)
 
     # == device and dtype ==
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    from opensora.utils.device import get_device
+
+    device = get_device()  # OPENSORA_DEVICE override -> MPS -> CUDA -> CPU
     dtype = to_torch_dtype(cfg.get("dtype", "bf16"))
     seed = cfg.get("seed", 1024)
     if seed is not None:
@@ -76,7 +85,7 @@ def main():
     # == build dataset ==
     if cfg.get("prompt"):
         cfg.dataset.data_path = create_tmp_csv(save_dir, cfg.prompt, cfg.get("ref", None), create=is_main_process())
-    dist.barrier()
+    _safe_barrier()
     dataset = build_module(cfg.dataset, DATASETS)
 
     # range selection
@@ -91,11 +100,15 @@ def main():
     dataloader_args = dict(
         dataset=dataset,
         batch_size=cfg.get("batch_size", 1),
-        num_workers=cfg.get("num_workers", 4),
+        # macOS spawns (not forks) DataLoader workers, so the local seed_worker
+        # closure can't be pickled. Single-device inference doesn't need workers.
+        num_workers=cfg.get("num_workers", 4) if device == "cuda" else 0,
         seed=cfg.get("seed", 1024),
         shuffle=False,
         drop_last=False,
-        pin_memory=True,
+        # pinned host memory is a CUDA concept and the pin-memory thread calls
+        # torch.cuda.current_device(); pointless and crash-prone on MPS/CPU.
+        pin_memory=(device == "cuda"),
         process_group=get_data_parallel_group(),
         prefetch_factor=cfg.get("prefetch_factor", None),
     )
@@ -136,12 +149,20 @@ def main():
         model_ae, _, _, _, _ = booster_ae.boost(model=model_ae)
         model_ae = model_ae.unwrap()
 
-    api_fn = prepare_api(model, model_ae, model_t5, model_clip, optional_models)
+    offload_text_encoders = cfg.get("offload_text_encoders", False)
+    api_fn = prepare_api(
+        model, model_ae, model_t5, model_clip, optional_models, offload_text_encoders=offload_text_encoders
+    )
 
     # prepare image flux model if t2i2v
     if use_t2i2v:
         api_fn_img = prepare_api(
-            optional_models["img_flux"], optional_models["img_flux_ae"], model_t5, model_clip, optional_models
+            optional_models["img_flux"],
+            optional_models["img_flux_ae"],
+            model_t5,
+            model_clip,
+            optional_models,
+            offload_text_encoders=offload_text_encoders,
         )
 
     # ======================================================
@@ -171,6 +192,11 @@ def main():
                         model_ae = model_ae.to("cpu", dtype)
                         optional_models["img_flux"].to(device, dtype)
                         optional_models["img_flux_ae"].to(device, dtype)
+                        # Return the departed model's freed blocks to the OS. On MPS
+                        # the caching allocator keeps them *wired* otherwise, and with
+                        # ~46 GB of ping-ponged models on unified memory the parked
+                        # model's CPU pages need that physical memory back.
+                        empty_cache()
                         logger.info(
                             "offload video diffusion model to cpu, load image flux model to gpu: %s s",
                             time.time() - model_move_start,
@@ -196,7 +222,7 @@ def main():
                         start_index,
                         saving=is_saving_process,
                     )
-                    dist.barrier()
+                    _safe_barrier()
 
                     if cfg.get("offload_model", False):
                         model_move_start = time.time()
@@ -204,6 +230,7 @@ def main():
                         model_ae = model_ae.to(device, dtype)
                         optional_models["img_flux"].to("cpu", dtype)
                         optional_models["img_flux_ae"].to("cpu", dtype)
+                        empty_cache()  # see note above: un-wire the flux model's MPS blocks
                         logger.info(
                             "load video diffusion model to gpu, offload image flux model to cpu: %s s",
                             time.time() - model_move_start,
@@ -235,7 +262,7 @@ def main():
 
                 if is_saving_process:
                     process_and_save(x, batch, cfg, sub_dir, sampling_option, epoch, start_index)
-                dist.barrier()
+                _safe_barrier()
 
     logger.info("Inference finished.")
     log_cuda_max_memory("inference")

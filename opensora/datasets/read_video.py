@@ -9,8 +9,8 @@ import av
 import cv2
 import numpy as np
 import torch
-from torchvision import get_video_backend
-from torchvision.io.video import _check_av_available
+
+from ._video_io import _check_av_available
 
 MAX_NUM_FRAMES = 2500
 
@@ -54,8 +54,7 @@ def read_video_av(
     # file existence
     if not os.path.exists(filename):
         raise RuntimeError(f"File not found: {filename}")
-    # backend check
-    assert get_video_backend() == "pyav", "pyav backend is required for read_video_av"
+    # backend check (this reader is unconditionally pyav)
     _check_av_available()
     # end_pts check
     if end_pts is None:

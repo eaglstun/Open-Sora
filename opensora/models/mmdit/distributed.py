@@ -13,9 +13,21 @@ from colossalai.shardformer.policies.base_policy import (
     ModulePolicyDescription, Policy, SubModuleReplacementDescription)
 from colossalai.shardformer.shard import ShardConfig
 from einops import rearrange
-from flash_attn.flash_attn_interface import (_flash_attn_backward,
-                                             _flash_attn_forward)
-from liger_kernel.ops.rope import LigerRopeFunction
+
+# This module implements colossalai sequence-parallel attention; every symbol
+# below is only reached when sp_size > 1, which never happens on the
+# single-device (ws=1) lane. Guard the CUDA-only kernels so the module imports
+# on Apple Silicon; if SP is ever requested without them, it fails at call time.
+try:
+    from flash_attn.flash_attn_interface import (_flash_attn_backward,
+                                                 _flash_attn_forward)
+except ImportError:
+    _flash_attn_backward = _flash_attn_forward = None
+
+try:
+    from liger_kernel.ops.rope import LigerRopeFunction
+except ImportError:
+    LigerRopeFunction = None
 
 try:
     from flash_attn_interface import \
@@ -24,7 +36,7 @@ try:
         _flash_attn_forward as _flash_attn_forward_v3
 
     SUPPORT_FA3 = True
-except:
+except ImportError:
     SUPPORT_FA3 = False
 
 from torch import Tensor

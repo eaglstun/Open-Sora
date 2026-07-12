@@ -25,14 +25,15 @@
 
 **What works today** — branch **`feature/apple-silicon-mps`**:
 
-| Capability                                                      | Status                   |
-| --------------------------------------------------------------- | ------------------------ |
-| 256px **text-to-video** (13f comfortable → 49f max)             | ✅                       |
-| **Image-to-video** — `i2v_head`, `i2v_tail`, `i2v_loop`         | ✅                       |
-| **768px stills**                                                | ✅ (~4 min)              |
-| Runs on **torch 2.13** (~17% faster on MPS than 2.10)           | ✅                       |
-| **CPU↔MPS numeric parity suite** (9 tests: MMDiT, VAE, T5/CLIP) | ✅                       |
-| 768px _video_, training, flux t2i2v                             | ❌ out of scope (memory) |
+| Capability                                                                           | Status                              |
+| ------------------------------------------------------------------------------------ | ----------------------------------- |
+| 256px **text-to-video** (13f comfortable → 49f max)                                  | ✅                                  |
+| **Image-to-video** — `i2v_head`, `i2v_tail`, `i2v_loop`                              | ✅                                  |
+| **768px stills**                                                                     | ✅ (~4 min)                         |
+| **flux text→image→video** (`t2i2v_256px`)                                            | ⚠️ works, but ~34 GB swap — painful |
+| Runs on **torch 2.13** (~17% faster on MPS than 2.10)                                | ✅                                  |
+| **CPU↔MPS numeric parity suite** — **12 tests** (MMDiT, both VAEs, T5/CLIP, compile) | ✅                                  |
+| 768px _video_, training                                                              | ❌ out of scope (memory)            |
 
 ### ⚠️ On a Mac: launch with plain `python`, **never `torchrun`**
 

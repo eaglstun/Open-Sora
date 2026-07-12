@@ -236,11 +236,20 @@ elementwise work, so think −10–25%, not −2×.
   correct subject/composition). \*\*768px \_video* stays out of scope\*\* (the temporal
   dim would reintroduce the memory wall). Command:
   `osora-mps --prompt "..." --resolution 768px --num_frames 1 --num_steps 20`.
-- **flux t2i2v at 256px** ⬜ not yet probed: `scripts/diffusion/inference.py` already ping-pongs
-  the flux and video models between CPU and device under `--offload_model True`; flux
-  adds ~24 GB moving through unified memory. Probe only after P4 lands (it has).
-  It's an entirely untested model on MPS — needs its own parity gate before its
-  output is trusted; the heavy, lower-value half of P6.
+- **flux t2i2v at 256px** ✅ **DONE (2026-07-12) — it works, but it's at the wall.**
+  Fallback-unset smoke passed: **flux and its 2D VAE (`autoencoder_2d`) run on native
+  Metal, no kernel gaps**. End-to-end t2i2v completed (13f, 8 steps): flux generated a
+  genuinely high-quality 768px still, the video leg animated it via `i2v_head`. Both
+  models ping-pong under the real `--offload_model True` (+ P4's
+  `--offload_text_encoders True` for headroom).
+  **Cost is brutal:** ~57 GB of weights in 64 GB → **peak swap 34 GB**, free→0, and the
+  flux→video model swap-back alone took **122 s**. Total ~5 min at 8 steps; a
+  quality run (30 steps × 2 stages) would be far longer. **Verdict: viable but
+  painful — prefer direct t2v/i2v on this lane** unless you specifically want flux's
+  prompt adherence. Path was already device-clean; one real fix landed: `empty_cache()`
+  after each ping-pong move (the caching allocator kept the departed model's blocks
+  _wired_ while the parked model's CPU pages competed for the same unified memory).
+  Gate: `tests/mps/test_cpu_mps_parity_ae2d.py` (autoencoder_2d CPU↔MPS).
 - **flux t2i2v at 256px**: `scripts/diffusion/inference.py` already ping-pongs
   the flux and video models between CPU and device under `--offload_model True`; flux
   adds ~24 GB moving through unified memory. Probe only after P4 lands.

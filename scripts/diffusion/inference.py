@@ -20,6 +20,7 @@ from opensora.utils.cai import (
     init_inference_environment,
 )
 from opensora.utils.config import parse_alias, parse_configs
+from opensora.utils.device import empty_cache
 from opensora.utils.inference import (
     add_fps_info_to_text,
     add_motion_score_to_text,
@@ -191,6 +192,11 @@ def main():
                         model_ae = model_ae.to("cpu", dtype)
                         optional_models["img_flux"].to(device, dtype)
                         optional_models["img_flux_ae"].to(device, dtype)
+                        # Return the departed model's freed blocks to the OS. On MPS
+                        # the caching allocator keeps them *wired* otherwise, and with
+                        # ~46 GB of ping-ponged models on unified memory the parked
+                        # model's CPU pages need that physical memory back.
+                        empty_cache()
                         logger.info(
                             "offload video diffusion model to cpu, load image flux model to gpu: %s s",
                             time.time() - model_move_start,
@@ -224,6 +230,7 @@ def main():
                         model_ae = model_ae.to(device, dtype)
                         optional_models["img_flux"].to("cpu", dtype)
                         optional_models["img_flux_ae"].to("cpu", dtype)
+                        empty_cache()  # see note above: un-wire the flux model's MPS blocks
                         logger.info(
                             "load video diffusion model to gpu, offload image flux model to cpu: %s s",
                             time.time() - model_move_start,

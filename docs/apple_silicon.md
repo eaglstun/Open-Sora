@@ -67,18 +67,26 @@ Two are load-bearing (`OPENSORA_DEVICE`, `HF_HUB_OFFLINE`);
 > not a speed lever here** — the hot loop is already all-Metal. Keep the flag only as
 > insurance for untested paths (i2v, other resolutions).
 
-## ⚠️ The two things that will waste your time
+## ⚠️ The three things that will waste your time
 
 1. **`num_frames` defaults to 129** (a ~5s video). That is the single biggest
    trap. A 129-frame denoise step took **~18 min/step** and looked "stuck." Use
    `--num_frames 1` (image) or `13` (short clip) for anything interactive.
    Valid values are `4k+1`.
-2. **Do NOT disable `--offload` for large workloads.** On unified memory,
-   loading T5-XXL (fp32, ~19 GB) + the 11B MMDiT (22 GB) + activations for many
-   frames overflows 64 GB into swap → the process sits in uninterruptible sleep
-   thrashing the disk at ~20% CPU, making ~zero progress. For **small** workloads
-   (1 frame, or 13 frames) no-offload is fine and faster; for anything larger,
-   pass `--offload True`.
+2. **`--offload True` IS A NO-OP. The real flag is `--offload_model True`.**
+   Nothing reads `cfg.offload` — the code reads `cfg.get("offload_model")`
+   (`inference.py:141/189/227`), and `offload` is not in `parse_alias`. The
+   upstream README (and, until 2026-07-12, these docs) say `--offload True`, which
+   silently does **nothing** — you get no model offload and wonder why you're
+   swapping. Verified: `--offload_model True` does land as `cfg.offload_model=True`.
+3. **Memory is the wall on unified memory.** T5-XXL (~19 GB) + the 11B MMDiT
+   (22 GB) + activations overflows 64 GB into swap → the process sits in
+   uninterruptible sleep thrashing the disk at ~20% CPU, making ~zero progress.
+   For small workloads (1 or 13 frames) everything-resident is fine and fastest.
+   For ≥29 frames use **`--offload_text_encoders True`** (P4 — frees 9.5 GB,
+   bit-identical, takes 29f from ~10 GB swap to ~2.5 GB). Note 49f completes even
+   with nothing offloaded (it just swaps); whether real `--offload_model True`
+   helps has **not** been measured.
 
 ## Observed timings (M-series, 64 GB, 256px)
 

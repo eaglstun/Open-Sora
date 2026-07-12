@@ -50,24 +50,26 @@ not ported — it must still import cleanly for CUDA users, so:
    local oracle (liger is CUDA-only), pixels ARE the acceptance test.
 5. **Memory probe before scale-up.** Watch RSS while stepping up frames/res.
    The swap-thrash signature: process in uninterruptible sleep, ~20% CPU, zero
-   progress — kill it, use `--offload True` or a smaller workload.
+   progress — kill it, use `--offload_text_encoders True` (P4) or a smaller
+   workload. (**NOT `--offload True` — that flag is a no-op**, see traps.)
 6. **Timing last**, thermally controlled, via the `mps-bench` skill. Never
    conclude speed from a single hot run.
 
 ## Traps already paid for (do not relearn)
 
-| Trap                           | Reality                                                                                                                                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `torchrun`                     | routes device to CPU + uninit-process-group crashes; plain `python` only                                                                                                                 |
-| `num_frames` default           | **129** (~18 min/step, looks hung). Always pass `1` or `13`; valid values `4k+1`                                                                                                         |
-| `--offload` off + big workload | T5(19GB)+MMDiT(22GB)+activations > 64GB → swap thrash                                                                                                                                    |
-| fp16                           | black frames (overflow), and not faster — bf16 stays                                                                                                                                     |
-| `TORCHDYNAMO_DISABLE=1`        | **retired (P5)** — `timestep_embedding`'s compile is now CUDA-only (`is_cuda()`-gated); the var is inert on MPS, drop it. Don't set it if using `--compile_mmdit` (dynamo must be live). |
-| float64 on MPS                 | unsupported — cast rope-style math to float32                                                                                                                                            |
-| DataLoader workers on macOS    | spawn (not fork) can't pickle local closures; `num_workers=0`, `pin_memory` only on CUDA                                                                                                 |
-| `av >= 15`                     | rejects `frame.pict_type = "NONE"` string form — omit it (see `opensora/datasets/_video_io.py`)                                                                                          |
-| wrong interpreter              | pyenv `python` has no colossalai; use `$OPENSORA_MPS_PY` (torch 2.13) or `~/miniconda3/bin/python` (torch 2.10 oracle); check `python -c "import colossalai"` first                      |
-| version drift                  | stack runs torch 2.10/2.13, repo pins 2.4 — imports clean ≠ runtime-safe; parity-test after any bump                                                                                     |
+| Trap                            | Reality                                                                                                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `torchrun`                      | routes device to CPU + uninit-process-group crashes; plain `python` only                                                                                                                     |
+| `num_frames` default            | **129** (~18 min/step, looks hung). Always pass `1` or `13`; valid values `4k+1`                                                                                                             |
+| `--offload True`                | **NO-OP — nothing reads `cfg.offload`.** Code reads `cfg.get("offload_model")`; `offload` isn't in `parse_alias`. Upstream README is wrong for this tree. Real flag: `--offload_model True`. |
+| big workload, nothing offloaded | T5(19GB)+MMDiT(22GB)+activations > 64GB → swap thrash. Use `--offload_text_encoders True` (P4: frees 9.5GB, bit-identical).                                                                  |
+| fp16                            | black frames (overflow), and not faster — bf16 stays                                                                                                                                         |
+| `TORCHDYNAMO_DISABLE=1`         | **retired (P5)** — `timestep_embedding`'s compile is now CUDA-only (`is_cuda()`-gated); the var is inert on MPS, drop it. Don't set it if using `--compile_mmdit` (dynamo must be live).     |
+| float64 on MPS                  | unsupported — cast rope-style math to float32                                                                                                                                                |
+| DataLoader workers on macOS     | spawn (not fork) can't pickle local closures; `num_workers=0`, `pin_memory` only on CUDA                                                                                                     |
+| `av >= 15`                      | rejects `frame.pict_type = "NONE"` string form — omit it (see `opensora/datasets/_video_io.py`)                                                                                              |
+| wrong interpreter               | pyenv `python` has no colossalai; use `$OPENSORA_MPS_PY` (torch 2.13) or `~/miniconda3/bin/python` (torch 2.10 oracle); check `python -c "import colossalai"` first                          |
+| version drift                   | stack runs torch 2.10/2.13, repo pins 2.4 — imports clean ≠ runtime-safe; parity-test after any bump                                                                                         |
 
 ## Where the port lives
 

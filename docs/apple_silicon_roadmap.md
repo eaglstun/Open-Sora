@@ -88,21 +88,27 @@ torch bump a 10-minute check instead of a re-derivation.
 
 **Result (torch 2.13, 20 steps, seed 42, cold, "raining, sea"):**
 
-| frames | latent | render | memory                                              | ~video @24fps | coherent |
-| ------ | ------ | ------ | --------------------------------------------------- | ------------- | -------- |
-| 13     | 4      | 137 s  | comfortable (no-offload)                            | ~0.5 s        | ✅       |
-| 29     | 8      | 237 s  | no-offload but **~10 GB swap, U-state** — the cliff | ~1.2 s        | ✅       |
-| 49     | 13     | 399 s  | **requires `--offload True`** (free→0 even so)      | ~2.0 s        | ✅       |
+> ⚠️ **CORRECTED 2026-07-12.** These runs were originally described as using
+> `--offload True`. **That flag is INERT** — nothing reads `cfg.offload` (the code
+> reads `cfg.get("offload_model")`, and `offload` is not in `parse_alias`). So **no
+> model offload ever ran** in these measurements; every row below is a
+> _no-model-offload_ run that simply swapped through. See the footgun note in
+> `apple_silicon.md`. The real flag is `--offload_model True` — **still untested**.
+
+| frames | latent | render | memory (no model offload)                 | ~video @24fps | coherent |
+| ------ | ------ | ------ | ----------------------------------------- | ------------- | -------- |
+| 13     | 4      | 137 s  | comfortable                               | ~0.5 s        | ✅       |
+| 29     | 8      | 237 s  | **~10 GB swap, U-state** — the cliff      | ~1.2 s        | ✅       |
+| 49     | 13     | 399 s  | heavy swap, free→0 — but **it completes** | ~2.0 s        | ✅       |
 
 **Finding:** render time scales **~linearly** with latent frames (≈30–34 s each), not
 quadratically — attention is _not_ the bottleneck (linear/MLP layers dominate), so the
-wall is **memory, not compute**. **Verdict: 29 frames is the practical no-offload
-ceiling** on 64 GB (~4 min, rides the swap edge); **49 frames is the practical max**
-with `--offload True` (~6.7 min, at free→0). Beyond ~49f toward 129f is
-memory-prohibitive. So the lane is for **short clips, ~0.5–2 s**: 29f no-offload for
-quick iteration, 49f+offload when you need the length. All numbers cold; add ~+28% warm.
-_Caveats: the 49f timing carries offload + some residual-swap overhead (treat as an
-upper estimate); baselines recorded via `mps-bench`._
+wall is **memory, not compute**. **Verdict: 29 frames is the comfortable ceiling** on
+64 GB (~4 min, rides the swap edge); **49 frames still completes** (~6.7 min) purely by
+swapping — it does _not_ require model offload (that was the inert-flag error). Beyond
+~49f toward 129f is memory-prohibitive. So the lane is for **short clips, ~0.5–2 s**.
+All numbers cold; add ~+28% warm. **Open question:** whether real `--offload_model True`
+actually helps here has never been measured.
 
 ---
 
@@ -131,18 +137,27 @@ embeddings are copied into `inp`, T5+CLIP are moved to CPU and `torch.mps.empty_
 returns the memory (the `empty_cache` is load-bearing — `.to("cpu")` alone leaves the
 allocation wired). Measured (torch 2.13, fresh machine, seed 42, 20 steps):
 
-| run                         | device mem into denoise           | peak swap  | vs P3 baseline                                        |
-| --------------------------- | --------------------------------- | ---------- | ----------------------------------------------------- |
-| device probe (13f)          | 35.4 → **25.8 GB** (**−9.54 GB**) | —          | —                                                     |
-| 29f + text-offload          | 25.8 GB                           | **2.5 GB** | was ~10 GB (off the cliff)                            |
-| 49f + text-offload **only** | 25.8 GB                           | 9.55 GB    | **was impossible** no-offload → now completes (421 s) |
+| run                | device mem into denoise           | peak swap  | vs P3 baseline             |
+| ------------------ | --------------------------------- | ---------- | -------------------------- |
+| device probe (13f) | 35.4 → **25.8 GB** (**−9.54 GB**) | —          | —                          |
+| 29f + text-offload | 25.8 GB                           | **2.5 GB** | was ~10 GB (off the cliff) |
+| 49f + text-offload | 25.8 GB                           | 9.55 GB    | completes in 421 s         |
 
 **Findings:** frees **9.54 GB** device memory (exactly the bf16 T5+CLIP footprint);
 output is **bit-identical** (flag on==off, decoded-frame MD5 match). It's a **memory
 lever, not a speed lever** — render times are ~neutral (the T5→CPU move ≈ the swap
-saved). **Headline: 49f now runs without the blunt full `--offload`** — text-offload
-alone gives enough headroom to escape the thrash death-spiral. Use it for 29f (near
-swap-free) and to make 49f practical. Re-materialization is per-`api_fn`-call, so
+saved). **Headline: 29f peak swap drops ~10 GB → 2.5 GB**, i.e. it takes 29f off the
+swap cliff. Use it for any frame count ≥29.
+
+> ⚠️ **CORRECTED 2026-07-12.** This section originally claimed "49f now runs without
+> the blunt full `--offload` — was impossible before." **That was wrong.** The P3 49f
+> baseline passed `--offload True`, which is an **inert flag** (nothing reads
+> `cfg.offload`), so it had no model offload either — 49f completed _both_ times
+> purely by swapping (399 s then 421 s). Text-offload did **not** "enable" 49f. The
+> measured wins above (−9.54 GB device memory, 29f swap 10→2.5 GB, bit-identical) are
+> unaffected — they were measured directly, not inferred from the flag.
+
+Re-materialization is per-`api_fn`-call, so
 multi-prompt CSVs / `num_sample>1` still work.
 
 **Original plan (for reference):**
@@ -222,12 +237,12 @@ elementwise work, so think −10–25%, not −2×.
   dim would reintroduce the memory wall). Command:
   `osora-mps --prompt "..." --resolution 768px --num_frames 1 --num_steps 20`.
 - **flux t2i2v at 256px** ⬜ not yet probed: `scripts/diffusion/inference.py` already ping-pongs
-  the flux and video models between CPU and device under `--offload True`; flux
+  the flux and video models between CPU and device under `--offload_model True`; flux
   adds ~24 GB moving through unified memory. Probe only after P4 lands (it has).
   It's an entirely untested model on MPS — needs its own parity gate before its
   output is trusted; the heavy, lower-value half of P6.
 - **flux t2i2v at 256px**: `scripts/diffusion/inference.py` already ping-pongs
-  the flux and video models between CPU and device under `--offload True`; flux
+  the flux and video models between CPU and device under `--offload_model True`; flux
   adds ~24 GB moving through unified memory. Probe only after P4 lands.
 
 - **Effort:** low to probe, high to make pleasant. **Risk:** memory (flux),

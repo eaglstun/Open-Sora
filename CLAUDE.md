@@ -38,8 +38,8 @@ torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py \
 - 768px config: `t2i2v_768px.py`; direct text→video (skip the flux T2I stage): `256px.py` / `768px.py`.
 - Image→video: add `--cond_type i2v_head --ref assets/texts/i2v.png`.
 - Batch from a CSV instead of `--prompt`: `--dataset.data-path assets/texts/example.csv`.
-- Multi-GPU: bump `--nproc_per_node` (768px uses ColossalAI sequence parallelism; 256px `_tp` config uses tensor parallelism + `--offload True`).
-- Memory: `--offload True`. Reproducibility: `--seed 42 --sampling_option.seed 42`.
+- Multi-GPU: bump `--nproc_per_node` (768px uses ColossalAI sequence parallelism; 256px `_tp` config uses tensor parallelism + `--offload_model True`).
+- Memory: **`--offload_model True`** — note the upstream README's `--offload True` is a **no-op** in this tree (nothing reads `cfg.offload`; the code reads `cfg.get("offload_model")`, and `offload` isn't in `parse_alias`). Reproducibility: `--seed 42 --sampling_option.seed 42`.
 - Prompt refine via ChatGPT: `export OPENAI_API_KEY=...` then `--refine-prompt True`. Motion score: `--motion-score 4` (or `dynamic`, needs the OpenAI key).
 
 **Training / VAE:** `scripts/diffusion/train.py` (configs under `configs/diffusion/train/`, e.g. `stage1.py`, `stage2.py`, `*_i2v.py`). VAE training/inference under `scripts/vae/` + `configs/vae/`. Full walkthrough (dataset prep, columns, TensorNVMe for checkpointing) is in `docs/train.md`. Training requires `pip install git+https://github.com/hpcaitech/TensorNVMe.git`.
@@ -54,7 +54,7 @@ There is **no test suite and no lint make-target** in this repo. Code style is e
 
 The system is built on **mmengine `Config` files + a registry**, not on function arguments. A config `.py` is a plain Python module of dict-like settings; `MODELS`/`DATASETS` registries (`opensora/registry.py`) turn a dict with a `type` key into an instantiated `nn.Module` via `build_module(...)`.
 
-CLI overrides are parsed by hand in `opensora/utils/config.py::merge_args`: any `--a.b.c value` after the config path sets `cfg.a.b.c`, with the value coerced to the type already present in the config (so `--offload True` becomes a bool, `--num_frames 129` an int). `parse_alias` then maps a handful of convenience keys (`--resolution`, `--num_frames`, `--aspect_ratio`, `--ckpt_path`, `--guidance`, ...) onto their real nested homes under `cfg.sampling_option` / `cfg.model`. **When adding a tunable, add it to a config and let it flow through — don't add argparse flags.**
+CLI overrides are parsed by hand in `opensora/utils/config.py::merge_args`: any `--a.b.c value` after the config path sets `cfg.a.b.c`, with the value coerced to the type already present in the config (so `--offload_model True` becomes a bool, `--num_frames 129` an int). `parse_alias` then maps a handful of convenience keys (`--resolution`, `--num_frames`, `--aspect_ratio`, `--ckpt_path`, `--guidance`, ...) onto their real nested homes under `cfg.sampling_option` / `cfg.model`. **When adding a tunable, add it to a config and let it flow through — don't add argparse flags.**
 
 Inference configs compose via a base + `plugins/` (`sp.py` sequence-parallel, `tp.py` tensor-parallel, `t2i2v.py` the flux-T2I-then-video pipeline).
 

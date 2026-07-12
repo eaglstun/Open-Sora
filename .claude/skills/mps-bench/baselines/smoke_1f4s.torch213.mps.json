@@ -1,0 +1,48 @@
+{
+  "label": "harness smoke 1f/4step",
+  "created": "2026-07-12T09:05:28",
+  "machine": "Apple M4 Max",
+  "device": "mps",
+  "fallback_net": true,
+  "interpreter": "/Users/eeaglstun/venvs/opensora-torch213/bin/python",
+  "config": "configs/diffusion/inference/256px.py",
+  "workload": [
+    "--prompt",
+    "raining, sea",
+    "--num_frames",
+    "1",
+    "--num_steps",
+    "4",
+    "--seed",
+    "42",
+    "--sampling_option.seed",
+    "42"
+  ],
+  "git_sha": "c24ddfc",
+  "git_dirty": true,
+  "env": {
+    "torch": "2.13.0",
+    "torchvision": "0.28.0",
+    "python": "3.13.12",
+    "mps_available": true
+  },
+  "cooldown_s": 180,
+  "repeats": [
+    {
+      "returncode": 0,
+      "total_s": 55.5,
+      "log": "/Users/eeaglstun/Documents/dev/Open-Sora/.claude/skills/mps-bench/scripts/logs/20260712_090529_r0.log",
+      "render_s": 17.8,
+      "load_s": 33.5,
+      "output": {
+        "file": "/Users/eeaglstun/Documents/dev/Open-Sora/samples/bench/image_256px/prompt_0000.png",
+        "frames": 1,
+        "luma_mean": 101.66,
+        "luma_std": 31.34,
+        "flags": []
+      }
+    }
+  ],
+  "render_cold_s": 17.8,
+  "output_flags": []
+}

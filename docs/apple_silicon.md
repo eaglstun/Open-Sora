@@ -169,3 +169,6 @@ coherent seascape.
 - **Full 129-frame video**: impractical on MPS — that's a rented CUDA GPU job.
 - **Speed**: ~1 min per 13-frame denoise step once warm; fine for short clips,
   not for batches.
+
+Next phase (i2v, wider parity, frame-count frontier, compile): see
+[apple_silicon_roadmap.md](apple_silicon_roadmap.md).

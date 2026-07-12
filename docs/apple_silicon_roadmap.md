@@ -26,7 +26,21 @@ and anything that scales attention quadratically gets expensive fast.
 
 ---
 
-## P1 — Image-to-video (`i2v_head`) at 256px
+## P1 — Image-to-video (`i2v_head`) at 256px ✅ DONE (2026-07-12)
+
+**Result:** works on MPS at 256px, torch 2.13, first try — no code change needed.
+Ran the full ritual: fallback-unset smoke passed (the hunyuan **VAE encode**, never
+before run on MPS, executes on native Metal — no kernel gaps); CPU↔MPS parity added
+and green (`tests/mps/test_cpu_mps_parity_vae.py` — encode ~1e-7, decode ~1e-5,
+roundtrip ~4e-5, both torch lanes); pixel acceptance passed (frame 0 _is_ the
+reference image; 13f/30-step render animates it coherently — ~193 s warm, on par with
+t2v since the 3× CFG batch was already present). **Usage note:** i2v still needs
+`--prompt` present — the `--ref` image rides along via `create_tmp_csv`
+(`inference.py:85`); `--ref` alone crashes in dataset build. **`i2v_tail`/`i2v_loop`
+also done 2026-07-12** — both render coherently on MPS (fallback-unset, no kernel
+gaps), same encode/denoise as head; tail splices the ref at frame −1, loop takes two
+`;`-joined refs for frames 0 and −1 (reuse one image for a seamless loop). The full
+i2v family works — no model-code change for any of the three.
 
 **What:** `--cond_type i2v_head --ref <image>` on the existing 256px config.
 

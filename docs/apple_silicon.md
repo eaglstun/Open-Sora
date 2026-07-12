@@ -28,6 +28,18 @@ HF_HUB_OFFLINE=1 PYTORCH_ENABLE_MPS_FALLBACK=1 TORCHDYNAMO_DISABLE=1 OPENSORA_DE
 Output lands in `samples/video_256px/` (or `samples/image_256px/` when
 `--num_frames 1`).
 
+### Image-to-video (`i2v_head`) — also works on MPS
+
+Add `--cond_type i2v_head --ref assets/texts/i2v.png` to animate a still image
+(frame 0 becomes the reference; the rest is generated). **Keep `--prompt`** — the
+reference rides along with it via a temp CSV; `--ref` without `--prompt` crashes in
+dataset build. Verified 2026-07-12: the hunyuan VAE _encoder_ runs on native Metal
+and is CPU↔MPS parity-clean (`tests/mps/test_cpu_mps_parity_vae.py`). `i2v_tail`
+and `i2v_loop` also verified 2026-07-12 — tail splices the ref at the **last** frame
+(`--cond_type i2v_tail`); loop takes two `;`-separated refs for first+last
+(`--ref "a.png;b.png"`; reuse one image for a seamless loop). Same encode/denoise,
+different splice — no code change.
+
 ### Env vars
 
 Three are load-bearing (`OPENSORA_DEVICE`, `TORCHDYNAMO_DISABLE`, `HF_HUB_OFFLINE`);

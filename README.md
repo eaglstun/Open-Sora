@@ -65,26 +65,6 @@ Open-Sora not only democratizes access to advanced video generation techniques, 
 streamlined and user-friendly platform that simplifies the complexities of video generation.
 With Open-Sora, our goal is to foster innovation, creativity, and inclusivity within the field of content creation.
 
-🎬 For a professional AI video-generation product, try [Video Ocean](https://video-ocean.com/) — powered by a superior model.
-
-<div align="center">
-   <a href="https://video-ocean.com/">
-   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/3.gif" width="850" />
-   </a>
-</div>
-
-<div align="center">
-   <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-opensora">
-   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/1.gif" width="850" />
-   </a>
-</div>
-
-<div align="center">
-   <a href="https://hpc-ai.com/model-apis?utm_source=github&utm_medium=social&utm_campaign=promotion-opensora">
-   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/0408.gif" width="850" />
-   </a>
-</div>
-
 <!-- [[中文文档](/docs/zh_CN/README.md)] [[潞晨云](https://cloud.luchentech.com/)|[OpenSora镜像](https://cloud.luchentech.com/doc/docs/image/open-sora/)|[视频教程](https://www.bilibili.com/video/BV1ow4m1e7PX/?vd_source=c6b752764cd36ff0e535a768e35d98d2)] -->
 
 ## 📰 News

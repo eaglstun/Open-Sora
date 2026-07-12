@@ -17,7 +17,7 @@ Read `tests/mps/test_cpu_mps_parity.py` — it is the house pattern — and the
 
 ## Running the suite
 
-Repo root: `/Users/eeaglstun/Documents/dev/Open-Sora`. Two interpreters matter
+Repo root: the Open-Sora checkout (`$OPENSORA_HOME` if set). Two interpreters matter
 (bare `python` may be a pyenv shim with no deps — never use it):
 
 ```bash

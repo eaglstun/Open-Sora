@@ -15,7 +15,7 @@ regression, so it drops into pass/fail logic.
 **Run it with the inference interpreter** (it needs `av` for the output check):
 
 ```bash
-cd /Users/eeaglstun/Documents/dev/Open-Sora
+cd "$OPENSORA_HOME"   # the Open-Sora repo root
 "$OPENSORA_MPS_PY" .claude/skills/mps-bench/scripts/osora_bench.py run \
     --label "13f/20step, torch 2.13" \
     --out .claude/skills/mps-bench/baselines/t2v_13f20s.torch213.mps.json

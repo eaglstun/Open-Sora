@@ -157,23 +157,69 @@ All on `feature/apple-silicon-mps`; see `git diff main`.
   newer torch. (av ≥15 gotcha: `frame.pict_type = "NONE"` — the string form — is
   rejected; omit it, NONE is the encoder default.)
 
-## Newer torch on MPS (torch 2.13 is faster)
+## Upgrading torch — read this first
 
-The port pins nothing above; with the video-I/O change above, the pipeline runs on
-**torch 2.13 / torchvision 0.28** as well as the 2.10 / 0.25 baseline. torch 2.13
-passes the parity test and is measurably faster on the MPS hot path — thermally
-controlled 13f/20-step, seed 42:
+### Why video I/O is pyav-native (and why that unblocks you)
 
-| torch | cold render | warm render | cold→warm drift |
-| ----- | ----------- | ----------- | --------------- |
-| 2.10  | 137.6 s     | 176.5 s     | +28%            |
-| 2.13  | **129.0 s** | **146.5 s** | +13%            |
+**torchvision deleted its video API.** `torchvision.io.video` — `read_video`,
+`write_video`, `_check_av_available` — was **removed in torchvision 0.27**, and 0.28
+ships it as a **broken fbcode stub** (`from pytorch.vision.fb.io.video import …`,
+which raises `ModuleNotFoundError: No module named 'pytorch'`). The data layer used
+to import those names at module load, so **any torch ≥ 2.12 hard-crashed on import**
+— not just on MPS, on CUDA too, since torch pins torchvision.
 
-≈ **−6% cold / −17% warm**, and 2.13 throttles noticeably less — it won despite
-running second (hotter). Output verified coherent and seed-matched to 2.10. To adopt,
-upgrade torch in a **dedicated env** (a `--system-site-packages` venv over the conda
-base works; keep base on 2.10 as the parity oracle). Note torchvision 0.28.0's public
-wheel has broken video I/O — irrelevant now that opensora no longer imports it.
+**Fix:** video I/O is now **torchvision-independent**, backed directly by pyav:
+
+- `opensora/datasets/_video_io.py` (new) — pyav `write_video` + `_check_av_available`.
+- `opensora/datasets/read_video.py` — was already pyav-native; just dropped its
+  `torchvision.io.video` / `get_video_backend` imports.
+- `opensora/datasets/utils.py`, `scripts/cnv/meta.py` — redirected off `torchvision.io`.
+
+torchvision is still used for **transforms**, `datasets.folder`, and `utils.save_image`
+— those APIs are stable. Only the _video_ API is gone. **Do not reintroduce an import
+from `torchvision.io.video`; it does not exist in any modern torchvision.**
+
+### The upgrade playbook
+
+Verified matrix (both pass the parity suite and render correctly):
+
+| torch  | torchvision | status                                  |
+| ------ | ----------- | --------------------------------------- |
+| 2.10.0 | 0.25.0      | ✅ baseline / CPU-parity oracle         |
+| 2.13.0 | 0.28.0      | ✅ **−17% warm on MPS**, throttles less |
+
+Pairing rule of thumb: **torchvision minor = torch minor + 15** (2.10→0.25, 2.11→0.26,
+2.12→0.27, 2.13→0.28). Let pip resolve the pair rather than pinning torchvision by hand.
+
+When you bump torch:
+
+1. **Use a dedicated env — never mutate the working one.** A
+   `python -m venv --system-site-packages` over the conda base works well: it inherits
+   every dependency and you only install the new `torch`/`torchvision` into it, which
+   shadow the base copies. Keep the old env intact as the **CPU-parity oracle** and as
+   a fallback if the bump goes badly.
+2. **Bump torch and torchvision together.** A mismatched torchvision fails on its
+   compiled `_C` extension (it's ABI-locked to a specific torch).
+3. **Run the parity suite — this is the gate.** `python -m pytest -q tests/mps/`
+   (12 tests: MMDiT, both VAEs, T5/CLIP, compiled-vs-eager). MPS bugs are _silent wrong
+   numbers_, so a clean import proves nothing. This is what makes a torch bump a
+   10-minute check instead of a re-derivation.
+4. **Render something and look at it.** Seed-matched (`--seed 42
+--sampling_option.seed 42`) against the old env; pixels should be near-identical
+   (not bit-identical — kernel numerics differ across torch versions).
+5. **Time it with cooldowns.** Thermal drift is ~+28% cold→warm and will forge a naive
+   A/B. Use the `mps-bench` skill.
+
+### Landmines seen on real upgrades
+
+- **`av` ≥ 15 rejects `frame.pict_type = "NONE"`** (the legacy string form) with
+  `TypeError: an integer is required`. Omit the assignment — `NONE` is the encoder
+  default. (Already handled in `_video_io.py`.)
+- **torchvision ≥ 0.27 has no video API** (above). If a new import of it appears
+  anywhere, that's the bug.
+- **A `pip install -U torch` in the shared env is how you lose an afternoon** —
+  torchvision follows torch, and if anything in the tree still touched
+  `torchvision.io.video` it would break the CUDA path too.
 
 ## Correctness discipline
 

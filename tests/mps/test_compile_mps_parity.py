@@ -22,9 +22,8 @@ NOTE: the ``compile_mmdit`` flag is a silent no-op if TORCHDYNAMO_DISABLE is set
 in the environment; run this WITHOUT that var or the test proves nothing (it
 would compare eager-vs-eager). We assert the compile actually happened below.
 
-Run (torch 2.13 venv, where compile matters most):
-    /Users/eeaglstun/venvs/opensora-torch213/bin/python -m pytest -s \
-        tests/mps/test_compile_mps_parity.py
+Run (use the torch>=2.13 interpreter, where Inductor-Metal matters most):
+    python -m pytest -s tests/mps/test_compile_mps_parity.py
 """
 import pytest
 import torch

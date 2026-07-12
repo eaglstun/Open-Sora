@@ -20,7 +20,7 @@ crashes. Drop the `torchrun --nproc_per_node 1 --standalone` prefix everywhere.
 ## Working command (this produces the rainy-sea clip)
 
 ```bash
-HF_HUB_OFFLINE=1 PYTORCH_ENABLE_MPS_FALLBACK=1 TORCHDYNAMO_DISABLE=1 OPENSORA_DEVICE=mps \
+HF_HUB_OFFLINE=1 PYTORCH_ENABLE_MPS_FALLBACK=1 OPENSORA_DEVICE=mps \
   python scripts/diffusion/inference.py configs/diffusion/inference/256px.py \
   --prompt "raining, sea" --num_frames 13 --num_steps 30 --num-sample 1 --save-dir samples
 ```
@@ -42,15 +42,21 @@ different splice — no code change.
 
 ### Env vars
 
-Three are load-bearing (`OPENSORA_DEVICE`, `TORCHDYNAMO_DISABLE`, `HF_HUB_OFFLINE`);
+Two are load-bearing (`OPENSORA_DEVICE`, `HF_HUB_OFFLINE`);
 `PYTORCH_ENABLE_MPS_FALLBACK` is optional insurance — see the note under the table.
 
-| Var                             | Why                                                                                     |
-| ------------------------------- | --------------------------------------------------------------------------------------- |
-| `OPENSORA_DEVICE=mps`           | forces the device shim (`opensora/utils/device.py`); `=cpu` runs a CPU oracle           |
-| `TORCHDYNAMO_DISABLE=1`         | neutralizes `@torch.compile(max-autotune)` on `timestep_embedding`, which stalls on MPS |
-| `HF_HUB_OFFLINE=1`              | weights are already local in `./ckpts`; skip HF network checks                          |
-| `PYTORCH_ENABLE_MPS_FALLBACK=1` | **optional, not load-bearing** — a net that routes any kernel-less op to CPU            |
+| Var                             | Why                                                                           |
+| ------------------------------- | ----------------------------------------------------------------------------- |
+| `OPENSORA_DEVICE=mps`           | forces the device shim (`opensora/utils/device.py`); `=cpu` runs a CPU oracle |
+| `HF_HUB_OFFLINE=1`              | weights are already local in `./ckpts`; skip HF network checks                |
+| `PYTORCH_ENABLE_MPS_FALLBACK=1` | **optional, not load-bearing** — a net that routes any kernel-less op to CPU  |
+
+> **`TORCHDYNAMO_DISABLE=1` is retired (P5, 2026-07-12).** It used to be required
+> because a `@torch.compile(max-autotune)` on `timestep_embedding` stalled on MPS;
+> that decorator is now CUDA-only (`is_cuda()`-gated), so the var is no longer needed
+> — a default render without it is bit-identical (verified). Dropped from the command
+> above. (Don't re-add it if you experiment with `--compile_mmdit True`: dynamo must
+> be live for that flag to do anything.)
 
 > **The fallback net is currently inert.** Verified 2026-07-11 on torch 2.10 by
 > running both paths with the flag _unset_: nothing in the 256px t2v pipeline falls

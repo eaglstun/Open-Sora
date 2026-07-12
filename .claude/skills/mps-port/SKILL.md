@@ -56,18 +56,18 @@ not ported — it must still import cleanly for CUDA users, so:
 
 ## Traps already paid for (do not relearn)
 
-| Trap                           | Reality                                                                                                                                                             |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `torchrun`                     | routes device to CPU + uninit-process-group crashes; plain `python` only                                                                                            |
-| `num_frames` default           | **129** (~18 min/step, looks hung). Always pass `1` or `13`; valid values `4k+1`                                                                                    |
-| `--offload` off + big workload | T5(19GB)+MMDiT(22GB)+activations > 64GB → swap thrash                                                                                                               |
-| fp16                           | black frames (overflow), and not faster — bf16 stays                                                                                                                |
-| `TORCHDYNAMO_DISABLE=1`        | load-bearing: the `@torch.compile` on `timestep_embedding` stalls on MPS                                                                                            |
-| float64 on MPS                 | unsupported — cast rope-style math to float32                                                                                                                       |
-| DataLoader workers on macOS    | spawn (not fork) can't pickle local closures; `num_workers=0`, `pin_memory` only on CUDA                                                                            |
-| `av >= 15`                     | rejects `frame.pict_type = "NONE"` string form — omit it (see `opensora/datasets/_video_io.py`)                                                                     |
-| wrong interpreter              | pyenv `python` has no colossalai; use `$OPENSORA_MPS_PY` (torch 2.13) or `~/miniconda3/bin/python` (torch 2.10 oracle); check `python -c "import colossalai"` first |
-| version drift                  | stack runs torch 2.10/2.13, repo pins 2.4 — imports clean ≠ runtime-safe; parity-test after any bump                                                                |
+| Trap                           | Reality                                                                                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `torchrun`                     | routes device to CPU + uninit-process-group crashes; plain `python` only                                                                                                                 |
+| `num_frames` default           | **129** (~18 min/step, looks hung). Always pass `1` or `13`; valid values `4k+1`                                                                                                         |
+| `--offload` off + big workload | T5(19GB)+MMDiT(22GB)+activations > 64GB → swap thrash                                                                                                                                    |
+| fp16                           | black frames (overflow), and not faster — bf16 stays                                                                                                                                     |
+| `TORCHDYNAMO_DISABLE=1`        | **retired (P5)** — `timestep_embedding`'s compile is now CUDA-only (`is_cuda()`-gated); the var is inert on MPS, drop it. Don't set it if using `--compile_mmdit` (dynamo must be live). |
+| float64 on MPS                 | unsupported — cast rope-style math to float32                                                                                                                                            |
+| DataLoader workers on macOS    | spawn (not fork) can't pickle local closures; `num_workers=0`, `pin_memory` only on CUDA                                                                                                 |
+| `av >= 15`                     | rejects `frame.pict_type = "NONE"` string form — omit it (see `opensora/datasets/_video_io.py`)                                                                                          |
+| wrong interpreter              | pyenv `python` has no colossalai; use `$OPENSORA_MPS_PY` (torch 2.13) or `~/miniconda3/bin/python` (torch 2.10 oracle); check `python -c "import colossalai"` first                      |
+| version drift                  | stack runs torch 2.10/2.13, repo pins 2.4 — imports clean ≠ runtime-safe; parity-test after any bump                                                                                     |
 
 ## Where the port lives
 

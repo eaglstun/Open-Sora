@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
@@ -509,6 +510,33 @@ def prepare_ids(
     }
 
 
+def compile_mmdit_blocks(model: nn.Module) -> None:
+    """Regionally ``torch.compile`` the MMDiT transformer blocks, in place.
+
+    Gated by the ``compile_mmdit`` config key (default off). Each Double/
+    SingleStreamBlock is compiled with default Inductor options — NOT
+    max-autotune (off-CUDA, Inductor skips GEMM autotuning anyway: "Not enough
+    SMs") — and ``dynamic=None`` (specialize on the first shape; a second
+    distinct shape triggers a dynamic recompile). Dynamo inlines nn.Modules,
+    so all 19 double blocks share one compiled artifact and all 38 single
+    blocks another: first-call compile overhead is a few seconds total.
+
+    Measured verdict on MPS / torch 2.13 (2026-07-12, details in
+    docs/apple_silicon_roadmap.md P5): compiles cleanly, but the generated
+    Metal kernels LOSE to eager MPS kernels (~-27% double block, ~-4% single
+    block, ~-12% net per forward) — keep this off on Apple Silicon for speed;
+    the flag exists so the experiment stays reproducible.
+    """
+    if os.environ.get("TORCHDYNAMO_DISABLE"):
+        warnings.warn(
+            "compile_mmdit=True but TORCHDYNAMO_DISABLE is set in the environment — "
+            "torch.compile is a silent no-op. Unset TORCHDYNAMO_DISABLE to actually compile."
+        )
+        return
+    for block in list(model.double_blocks) + list(model.single_blocks):
+        block.compile()
+
+
 def prepare_models(
     cfg: Config,
     device: torch.device,
@@ -533,6 +561,10 @@ def prepare_models(
     model = build_module(
         cfg.model, MODELS, device_map=model_device, torch_dtype=dtype
     ).eval()
+    if cfg.get("compile_mmdit", False):
+        # Lazy: tracing happens on the first forward, so this is safe to set up
+        # before any (optional) LoRA wrap below.
+        compile_mmdit_blocks(model)
     model_ae = build_module(
         cfg.ae, MODELS, device_map=model_device, torch_dtype=dtype
     ).eval()

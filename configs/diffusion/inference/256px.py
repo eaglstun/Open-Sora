@@ -39,6 +39,14 @@ fps_save = 24  # fps for video generation and saving
 # (e.g. Apple Silicon unified memory). Off by default: CUDA behavior unchanged.
 offload_text_encoders = False
 
+# torch.compile the MMDiT Double/SingleStreamBlocks (regional compilation,
+# default Inductor options). Off by default. Measured on Apple Silicon
+# (torch 2.13 Inductor-Metal, 2026-07-12): compiles cleanly but is a NET
+# SLOWDOWN vs eager MPS kernels (~-12% per forward) — leave off for speed
+# there; see docs/apple_silicon_roadmap.md P5. Requires TORCHDYNAMO_DISABLE
+# to be unset (a warning fires if it isn't).
+compile_mmdit = False
+
 # Define model components
 model = dict(
     type="flux",

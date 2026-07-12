@@ -178,8 +178,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     env = os.environ.copy()
     env["OPENSORA_DEVICE"] = args.device
-    env["TORCHDYNAMO_DISABLE"] = "1"
     env["HF_HUB_OFFLINE"] = "1"
+    # TORCHDYNAMO_DISABLE retired (P5): the timestep_embedding compile is CUDA-only now,
+    # so forcing it here is inert and would silently no-op a --compile_mmdit bench.
     if args.no_fallback_net:
         env.pop("PYTORCH_ENABLE_MPS_FALLBACK", None)  # smoke test: raise on kernel gaps
     else:

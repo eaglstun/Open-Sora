@@ -164,7 +164,29 @@ touching the denoise loop.
 - **Gate:** seed-matched pixels vs. before (identical, not just similar) +
   before/after memory measurement at 29f/49f.
 
-## P5 — torch.compile / Inductor-on-MPS experiment
+## P5 — torch.compile / Inductor-on-MPS experiment ✅ DONE (2026-07-12) — negative, but with a bonus
+
+**Result: compile is a measured net SLOWDOWN on MPS torch 2.13 — keep it off.**
+Shipped as opt-in `--compile_mmdit True` (default off) purely to reproduce the
+negative result. Inductor-Metal compiles the MMDiT blocks cleanly (no stall, no
+error), but the generated kernels **lose to eager MPS**: micro-bench at 13f/256px
+shapes = DoubleStreamBlock **−27%** (98→125 ms), SingleStreamBlock −4%, weighted
+**≈ −12% per forward**. `max-autotune` gives the identical time — Inductor refuses
+GEMM autotuning off-CUDA (`"Not enough SMs"`), so there's no better mode. The
+roadmap's hoped −10–25% is a **+12% regression**. Numerics are fine: compiled-MPS
+vs eager-MPS is **~3e-7 at fp32** (`tests/mps/test_compile_mps_parity.py`, suite now
+9 passed) — Fable's ~3e-2 was a bf16 artifact, not a correctness defect. So "keep
+off" rests purely on speed.
+
+**Bonus (the real P5 win): `TORCHDYNAMO_DISABLE=1` is retired.** The historic
+`timestep_embedding` compile-stall does not reproduce; that decorator is now
+`is_cuda()`-gated (CUDA-only), so a default MPS render runs fine without the kill-switch
+and is **bit-identical** to running with it (verified, MD5-matched). Dropped from all
+launch commands, `apple_silicon.md`, the `mps-port` skill, and the `mps-bench` harness.
+Code: `mmdit/layers.py` (CUDA-gated timestep_embedding compile), `utils/sampling.py`
+(`compile_mmdit_blocks`, config-gated), `configs/…/256px.py` (`compile_mmdit=False`).
+
+**Original plan (for reference):**
 
 **What:** `TORCHDYNAMO_DISABLE=1` is currently load-bearing because the
 `@torch.compile(max-autotune)` on `timestep_embedding` stalls on MPS. torch 2.13

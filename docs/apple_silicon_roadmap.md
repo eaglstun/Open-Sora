@@ -84,7 +84,29 @@ torch bump a 10-minute check instead of a re-derivation.
 - **Gate:** this _is_ the gate. fp32 atol/rtol 1e-4, same finite-output checks
   as the MMDiT test.
 
-## P3 — Frame-count frontier: 29 → 49 frames
+## P3 — Frame-count frontier: 29 → 49 frames ✅ DONE (2026-07-12)
+
+**Result (torch 2.13, 20 steps, seed 42, cold, "raining, sea"):**
+
+| frames | latent | render | memory                                              | ~video @24fps | coherent |
+| ------ | ------ | ------ | --------------------------------------------------- | ------------- | -------- |
+| 13     | 4      | 137 s  | comfortable (no-offload)                            | ~0.5 s        | ✅       |
+| 29     | 8      | 237 s  | no-offload but **~10 GB swap, U-state** — the cliff | ~1.2 s        | ✅       |
+| 49     | 13     | 399 s  | **requires `--offload True`** (free→0 even so)      | ~2.0 s        | ✅       |
+
+**Finding:** render time scales **~linearly** with latent frames (≈30–34 s each), not
+quadratically — attention is _not_ the bottleneck (linear/MLP layers dominate), so the
+wall is **memory, not compute**. **Verdict: 29 frames is the practical no-offload
+ceiling** on 64 GB (~4 min, rides the swap edge); **49 frames is the practical max**
+with `--offload True` (~6.7 min, at free→0). Beyond ~49f toward 129f is
+memory-prohibitive. So the lane is for **short clips, ~0.5–2 s**: 29f no-offload for
+quick iteration, 49f+offload when you need the length. All numbers cold; add ~+28% warm.
+_Caveats: the 49f timing carries offload + some residual-swap overhead (treat as an
+upper estimate); baselines recorded via `mps-bench`._
+
+---
+
+**Original plan (for reference):**
 
 **What:** map time + memory between the known-good 13 frames and the impossible 129. With the causal VAE (`temporal_reduction=4`), latent frames =
 `(n−1)/4 + 1`: 13f→4, 29f→8, 49f→13, 129f→33. Tokens scale linearly with latent

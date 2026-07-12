@@ -15,6 +15,47 @@
     <a href="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png"><img src="https://img.shields.io/badge/微信-小助手加群-green?logo=wechat&amp"></a>
 </div>
 
+---
+
+## 🍎 This fork: Open-Sora 2.0 running on Apple Silicon (MPS)
+
+> Upstream Open-Sora is **CUDA/NVIDIA-only** — there is no CPU or Metal path. **This
+> fork adds a working single-device Apple Silicon lane**: the 11B model generating
+> video on a Mac, no NVIDIA GPU anywhere. Validated on an **M4 Max / 64 GB**.
+
+**What works today** — branch **`feature/apple-silicon-mps`**:
+
+| Capability                                                      | Status                   |
+| --------------------------------------------------------------- | ------------------------ |
+| 256px **text-to-video** (13f comfortable → 49f max)             | ✅                       |
+| **Image-to-video** — `i2v_head`, `i2v_tail`, `i2v_loop`         | ✅                       |
+| **768px stills**                                                | ✅ (~4 min)              |
+| Runs on **torch 2.13** (~17% faster on MPS than 2.10)           | ✅                       |
+| **CPU↔MPS numeric parity suite** (9 tests: MMDiT, VAE, T5/CLIP) | ✅                       |
+| 768px _video_, training, flux t2i2v                             | ❌ out of scope (memory) |
+
+### ⚠️ On a Mac: launch with plain `python`, **never `torchrun`**
+
+`torchrun` sets distributed env vars that route the device to CPU and crash on an
+uninitialized process group. **Every `torchrun …` command below must drop that prefix
+on Apple Silicon.**
+
+```bash
+HF_HUB_OFFLINE=1 PYTORCH_ENABLE_MPS_FALLBACK=1 OPENSORA_DEVICE=mps \
+  python scripts/diffusion/inference.py configs/diffusion/inference/256px.py \
+  --prompt "raining, sea" --num_frames 13 --num_steps 30 --save-dir samples
+```
+
+Two more Mac gotchas that will eat your afternoon: **`num_frames` defaults to 129**
+(~18 min/step — always pass `1` or `13`), and **`--offload True` is a no-op** in this
+tree (nothing reads `cfg.offload`; the real flag is **`--offload_model True`** — see
+below). For ≥29 frames use `--offload_text_encoders True`.
+
+📖 **Full guide: [docs/apple_silicon.md](docs/apple_silicon.md)** — setup, timings,
+every trap. **Findings + roadmap: [docs/apple_silicon_roadmap.md](docs/apple_silicon_roadmap.md)**.
+
+---
+
 ## Open-Sora: Democratizing Efficient Video Production for All
 
 We design and implement **Open-Sora**, an initiative dedicated to **efficiently** producing high-quality video. We hope to make the model,
@@ -24,6 +65,7 @@ streamlined and user-friendly platform that simplifies the complexities of video
 With Open-Sora, our goal is to foster innovation, creativity, and inclusivity within the field of content creation.
 
 🎬 For a professional AI video-generation product, try [Video Ocean](https://video-ocean.com/) — powered by a superior model.
+
 <div align="center">
    <a href="https://video-ocean.com/">
    <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/3.gif" width="850" />
@@ -76,12 +118,12 @@ Demos are presented in compressed GIF format for convenience. For original quali
 <details>
 <summary>OpenSora 1.3 Demo</summary>
 
-| **5s 720×1280**                                                                                                                                                        | **5s 720×1280**                                                                                                                                                           | **5s 720×1280**                                                                                                                                                              |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_tomato.gif" width="">](https://streamable.com/e/r0imrp?quality=highest&amp;autoplay=1) | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_fisherman.gif" width="">](https://streamable.com/e/hfvjkh?quality=highest&amp;autoplay=1) | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_girl2.gif" width="">](https://streamable.com/e/kutmma?quality=highest&amp;autoplay=1)        |
-| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_grape.gif" width="">](https://streamable.com/e/osn1la?quality=highest&amp;autoplay=1)  | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_mushroom.gif" width="">](https://streamable.com/e/l1pzws?quality=highest&amp;autoplay=1)  | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_parrot.gif" width="">](https://streamable.com/e/2vqari?quality=highest&amp;autoplay=1)       |
-| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_trans.gif" width="">](https://streamable.com/e/1in7d6?quality=highest&amp;autoplay=1)  | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_bear.gif" width="">](https://streamable.com/e/e9bi4o?quality=highest&amp;autoplay=1)      | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_futureflower.gif" width="">](https://streamable.com/e/09z7xi?quality=highest&amp;autoplay=1) |
-| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_fire.gif" width="">](https://streamable.com/e/16c3hk?quality=highest&amp;autoplay=1)   | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_man.gif" width="">](https://streamable.com/e/wi250w?quality=highest&amp;autoplay=1)       | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_black.gif" width="">](https://streamable.com/e/vw5b64?quality=highest&amp;autoplay=1)        |
+| **5s 720×1280**                                                                                                                                                    | **5s 720×1280**                                                                                                                                                       | **5s 720×1280**                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_tomato.gif" width="">](https://streamable.com/e/r0imrp?quality=highest&autoplay=1) | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_fisherman.gif" width="">](https://streamable.com/e/hfvjkh?quality=highest&autoplay=1) | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_girl2.gif" width="">](https://streamable.com/e/kutmma?quality=highest&autoplay=1)        |
+| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_grape.gif" width="">](https://streamable.com/e/osn1la?quality=highest&autoplay=1)  | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_mushroom.gif" width="">](https://streamable.com/e/l1pzws?quality=highest&autoplay=1)  | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_parrot.gif" width="">](https://streamable.com/e/2vqari?quality=highest&autoplay=1)       |
+| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_trans.gif" width="">](https://streamable.com/e/1in7d6?quality=highest&autoplay=1)  | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_bear.gif" width="">](https://streamable.com/e/e9bi4o?quality=highest&autoplay=1)      | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_futureflower.gif" width="">](https://streamable.com/e/09z7xi?quality=highest&autoplay=1) |
+| [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_fire.gif" width="">](https://streamable.com/e/16c3hk?quality=highest&autoplay=1)   | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_man.gif" width="">](https://streamable.com/e/wi250w?quality=highest&autoplay=1)       | [<img src="https://github.com/hpcaitech/Open-Sora-Demo/blob/main/demo/v1.3/demo_black.gif" width="">](https://streamable.com/e/vw5b64?quality=highest&autoplay=1)        |
 
 </details>
 
@@ -162,6 +204,12 @@ pip install xformers==0.0.27.post2 --index-url https://download.pytorch.org/whl/
 pip install flash-attn --no-build-isolation
 ```
 
+> 🍎 **On Apple Silicon, do NOT run the above.** `xformers` / `flash-attn` have no
+> arm64 build and the port makes them optional (they fall back to torch SDPA). The
+> Mac install is different — see **[docs/apple_silicon.md](docs/apple_silicon.md)**
+> for the exact dependency set (and note the port runs on torch 2.10/2.13, not the
+> pinned 2.4).
+
 Optionally, you can install flash attention 3 for faster speed.
 
 ```bash
@@ -197,7 +245,11 @@ Our model is optimized for image-to-video generation, but it can also be used fo
 torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/t2i2v_256px.py --save-dir samples --prompt "raining, sea"
 
 # Save memory with offloading
-torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/t2i2v_256px.py --save-dir samples --prompt "raining, sea" --offload True
+# NOTE: the flag is --offload_model (NOT --offload, which nothing reads and is a silent no-op).
+torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/t2i2v_256px.py --save-dir samples --prompt "raining, sea" --offload_model True
+
+# Save memory by releasing the T5/CLIP text encoders after they encode (frees ~9.5 GB, output bit-identical)
+torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/t2i2v_256px.py --save-dir samples --prompt "raining, sea" --offload_text_encoders True
 
 # Generation with csv
 torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py configs/diffusion/inference/t2i2v_256px.py --save-dir samples --dataset.data-path assets/texts/example.csv
@@ -280,7 +332,7 @@ Use `--num-sample k` to generate `k` samples for each prompt.
 
 ## Computational Efficiency
 
-We test the computational efficiency of text-to-video on H100/H800 GPU. For 256x256, we use colossalai's tensor parallelism, and `--offload True` is used. For 768x768, we use colossalai's sequence parallelism. All use number of steps 50. The results are presented in the format: $\color{blue}{\text{Total time (s)}}/\color{red}{\text{peak GPU memory (GB)}}$
+We test the computational efficiency of text-to-video on H100/H800 GPU. For 256x256, we use colossalai's tensor parallelism, and `--offload_model True` is used. For 768x768, we use colossalai's sequence parallelism. All use number of steps 50. The results are presented in the format: $\color{blue}{\text{Total time (s)}}/\color{red}{\text{peak GPU memory (GB)}}$
 
 | Resolution | 1x GPU                                 | 2x GPUs                               | 4x GPUs                               | 8x GPUs                               |
 | ---------- | -------------------------------------- | ------------------------------------- | ------------------------------------- | ------------------------------------- |
@@ -343,7 +395,7 @@ Here we only list a few of the projects. For other works and datasets, please re
 }
 
 @article{opensora2,
-    title={Open-Sora 2.0: Training a Commercial-Level Video Generation Model in $200k}, 
+    title={Open-Sora 2.0: Training a Commercial-Level Video Generation Model in $200k},
     author={Xiangyu Peng and Zangwei Zheng and Chenhui Shen and Tom Young and Xinying Guo and Binluo Wang and Hang Xu and Hongxin Liu and Mingyan Jiang and Wenjun Li and Yuhui Wang and Anbang Ye and Gang Ren and Qianran Ma and Wanying Liang and Xiang Lian and Xiwen Wu and Yuting Zhong and Zhuangyan Li and Chaoyu Gong and Guojun Lei and Leijun Cheng and Limin Zhang and Minghao Li and Ruijie Zhang and Silan Hu and Shijie Huang and Xiaokang Wang and Yuanheng Zhao and Yuqi Wang and Ziang Wei and Yang You},
     year={2025},
     journal={arXiv preprint arXiv:2503.09642},

@@ -123,7 +123,29 @@ and the answer defines what this lane is actually _for_.
 - **Gate:** memory watch during the run; coherent pixels; record per-frame-count
   baselines with `mps-bench` so the scaling curve is written down once.
 
-## P4 — Memory lever: release T5 after encode
+## P4 — Memory lever: release T5 after encode ✅ DONE (2026-07-12)
+
+**Result:** shipped as the config-gated flag `--offload_text_encoders True` (default
+off; base config key, inherited everywhere; CUDA path untouched). After the text
+embeddings are copied into `inp`, T5+CLIP are moved to CPU and `torch.mps.empty_cache()`
+returns the memory (the `empty_cache` is load-bearing — `.to("cpu")` alone leaves the
+allocation wired). Measured (torch 2.13, fresh machine, seed 42, 20 steps):
+
+| run                         | device mem into denoise           | peak swap  | vs P3 baseline                                        |
+| --------------------------- | --------------------------------- | ---------- | ----------------------------------------------------- |
+| device probe (13f)          | 35.4 → **25.8 GB** (**−9.54 GB**) | —          | —                                                     |
+| 29f + text-offload          | 25.8 GB                           | **2.5 GB** | was ~10 GB (off the cliff)                            |
+| 49f + text-offload **only** | 25.8 GB                           | 9.55 GB    | **was impossible** no-offload → now completes (421 s) |
+
+**Findings:** frees **9.54 GB** device memory (exactly the bf16 T5+CLIP footprint);
+output is **bit-identical** (flag on==off, decoded-frame MD5 match). It's a **memory
+lever, not a speed lever** — render times are ~neutral (the T5→CPU move ≈ the swap
+saved). **Headline: 49f now runs without the blunt full `--offload`** — text-offload
+alone gives enough headroom to escape the thrash death-spiral. Use it for 29f (near
+swap-free) and to make 49f practical. Re-materialization is per-`api_fn`-call, so
+multi-prompt CSVs / `num_sample>1` still work.
+
+**Original plan (for reference):**
 
 **What:** the text embeddings are computed once per prompt at the top of
 `api_fn` (`prepare()`); T5-XXL then sits resident through the entire denoise +

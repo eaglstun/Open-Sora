@@ -148,12 +148,20 @@ def main():
         model_ae, _, _, _, _ = booster_ae.boost(model=model_ae)
         model_ae = model_ae.unwrap()
 
-    api_fn = prepare_api(model, model_ae, model_t5, model_clip, optional_models)
+    offload_text_encoders = cfg.get("offload_text_encoders", False)
+    api_fn = prepare_api(
+        model, model_ae, model_t5, model_clip, optional_models, offload_text_encoders=offload_text_encoders
+    )
 
     # prepare image flux model if t2i2v
     if use_t2i2v:
         api_fn_img = prepare_api(
-            optional_models["img_flux"], optional_models["img_flux_ae"], model_t5, model_clip, optional_models
+            optional_models["img_flux"],
+            optional_models["img_flux_ae"],
+            model_t5,
+            model_clip,
+            optional_models,
+            offload_text_encoders=offload_text_encoders,
         )
 
     # ======================================================

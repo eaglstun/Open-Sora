@@ -32,6 +32,13 @@ sampling_option = dict(
 motion_score = "4"  # motion score for video generation
 fps_save = 24  # fps for video generation and saving
 
+# Move the T5/CLIP text encoders to CPU right after their embeddings are
+# computed (per api_fn call), freeing ~10 GB of device memory for the
+# denoise + decode phases; they move back before the next encode, so output
+# is bit-identical. Main win is on memory-constrained single-device runs
+# (e.g. Apple Silicon unified memory). Off by default: CUDA behavior unchanged.
+offload_text_encoders = False
+
 # Define model components
 model = dict(
     type="flux",

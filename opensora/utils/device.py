@@ -38,3 +38,17 @@ def is_cuda() -> bool:
 
 def is_mps() -> bool:
     return DEVICE == "mps"
+
+
+def empty_cache() -> None:
+    """Release the caching allocator's unused blocks back to the OS.
+
+    On MPS this is what actually returns unified memory after tensors are
+    freed/moved off-device — dropping the last reference only hands the
+    buffers back to the MPS caching allocator, which keeps them wired until
+    ``torch.mps.empty_cache()``. No-op on CPU (and on a forced-CPU oracle run).
+    """
+    if DEVICE == "mps" and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    elif DEVICE == "cuda" and torch.cuda.is_available():
+        torch.cuda.empty_cache()

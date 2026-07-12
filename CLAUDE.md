@@ -46,7 +46,12 @@ torchrun --nproc_per_node 1 --standalone scripts/diffusion/inference.py \
 
 **Gradio demo:** `gradio/app.py`.
 
-There is **no test suite and no lint make-target** in this repo. Code style is enforced only via pre-commit (black, isort, autoflake) — set it up with `pre-commit install`. Run `pre-commit run --all-files` before committing.
+Code style is enforced only via pre-commit (black, isort, autoflake) — set it up with `pre-commit install`.
+
+> ⚠️ **Do NOT run `pre-commit run --all-files`.** Upstream code does not conform to its own hooks, so it reformats **~68 unrelated files** and buries your diff. Lint **only the files you touched**:
+> `pre-commit run --files $(git diff main --name-only | grep '\.py$')`
+
+**Tests:** upstream ships none, but this branch adds a CPU↔MPS numeric-parity suite under `tests/mps/` (12 tests; they `skipif` off Apple Silicon, so they're inert on CUDA). Run it after touching any hot path: `python -m pytest -q tests/mps/`.
 
 ## Architecture
 

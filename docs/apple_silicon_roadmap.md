@@ -210,9 +210,22 @@ elementwise work, so think −10–25%, not −2×.
 
 **What:** two bounded probes, not commitments.
 
-- **768px, `--num_frames 1`**: ~9× the tokens of a 256px image (~81× attention),
-  but a 256px image denoises in ~16 s — so a 768px still image may land in
-  low minutes. Video at 768px stays out of scope.
+- **768px, `--num_frames 1`** ✅ **DONE (2026-07-12) — works.** Note the `768px.py`
+  config inherits `plugins/sp.py` (sequence-parallel = distributed, out of scope), so
+  drive 768px through the ws=1 **256px config** with `--resolution 768px` instead.
+  Result: fallback-unset smoke passed (**no kernel gaps at the new shapes** — 768px
+  runs on native Metal), **237 s** for a 768px still at 20 steps (~4 min, matching the
+  "low minutes" guess), **peak swap <1 GB** (num*frames 1 keeps activations small,
+  so memory is a non-issue for stills). Pixels coherent (a red barn at golden hour —
+  a touch soft, since the 256px-trained checkpoint is stretching resolution, but
+  correct subject/composition). \*\*768px \_video* stays out of scope\*\* (the temporal
+  dim would reintroduce the memory wall). Command:
+  `osora-mps --prompt "..." --resolution 768px --num_frames 1 --num_steps 20`.
+- **flux t2i2v at 256px** ⬜ not yet probed: `scripts/diffusion/inference.py` already ping-pongs
+  the flux and video models between CPU and device under `--offload True`; flux
+  adds ~24 GB moving through unified memory. Probe only after P4 lands (it has).
+  It's an entirely untested model on MPS — needs its own parity gate before its
+  output is trusted; the heavy, lower-value half of P6.
 - **flux t2i2v at 256px**: `scripts/diffusion/inference.py` already ping-pongs
   the flux and video models between CPU and device under `--offload True`; flux
   adds ~24 GB moving through unified memory. Probe only after P4 lands.
